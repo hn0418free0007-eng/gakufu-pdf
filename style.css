@@ -1,0 +1,79 @@
+* { box-sizing: border-box; }
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --ink: #1d2733;
+  --muted: #6b7684;
+  --accent: #2f6df6;
+  --border: #e2e6ec;
+}
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Segoe UI", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+header {
+  padding: 20px 16px 8px;
+  text-align: center;
+}
+header h1 { margin: 0; font-size: 20px; }
+header .sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+main { max-width: 760px; margin: 0 auto; padding: 8px 12px 40px; }
+footer { text-align: center; color: var(--muted); font-size: 11px; padding: 20px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 12px 0;
+}
+.btn {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #eef1f5;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn:active { opacity: .85; }
+.hint { color: var(--muted); font-size: 12px; margin: 10px 2px 0; line-height: 1.6; }
+
+.slider-row label { font-weight: 600; display: block; margin-bottom: 10px; }
+.slider-wrap { display: flex; align-items: center; gap: 8px; }
+.slider-wrap input[type=range] { flex: 1; }
+.slabel { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.thr-val { text-align: center; font-size: 13px; color: var(--muted); margin: 8px 0 12px; }
+
+.text { width: 100%; padding: 12px; font-size: 16px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px; }
+
+.status { text-align: center; color: var(--muted); font-size: 13px; padding: 8px; }
+
+.pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.page-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  position: relative;
+}
+.page-item img { width: 100%; display: block; border-radius: 6px; background:#fff; }
+.page-item .num {
+  position: absolute; top: 4px; left: 4px;
+  background: rgba(0,0,0,.6); color:#fff; font-size: 11px;
+  padding: 2px 7px; border-radius: 8px;
+}
+.page-item .del {
+  position: absolute; top: 4px; right: 4px;
+  background: rgba(220,40,40,.9); color:#fff; border:none;
+  width: 24px; height: 24px; border-radius: 12px; font-size: 14px; cursor: pointer;
+}

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>楽譜メモ消しPDF</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>楽譜メモ消しPDF</h1>
+  <p class="sub">楽譜の写真から手書きメモを消して、1つのPDFにまとめます</p>
+</header>
+
+<main>
+  <section class="card">
+    <label class="btn primary" for="fileInput">① 写真を選ぶ（複数可）</label>
+    <input id="fileInput" type="file" accept="image/*" multiple hidden>
+    <p class="hint">1ページ＝1枚。選んだ順にページになります。</p>
+  </section>
+
+  <section class="card" id="controlCard" hidden>
+    <div class="slider-row">
+      <label for="thr">② 消し具合の調整</label>
+      <div class="slider-wrap">
+        <span class="slabel">メモを残す</span>
+        <input id="thr" type="range" min="110" max="175" value="155" step="1">
+        <span class="slabel">メモを消す</span>
+      </div>
+      <div class="thr-val">しきい値: <span id="thrVal">155</span></div>
+    </div>
+    <div class="slider-row" style="margin-top:14px">
+      <label for="thick">線の太さ（濃さ）</label>
+      <div class="slider-wrap">
+        <span class="slabel">細い</span>
+        <input id="thick" type="range" min="0" max="3" value="3" step="1">
+        <span class="slabel">太い</span>
+      </div>
+      <div class="thr-val">太らせ: <span id="thickVal">3</span></div>
+    </div>
+    <button class="btn" id="reprocessBtn">この設定で再処理</button>
+    <p class="hint">
+      音符が薄い・かすれる場合は「線の太さ」を上げてください（既定3）。<br>
+      メモが残る場合はしきい値を右へ、音符が欠ける場合は左へ。
+    </p>
+  </section>
+
+  <section id="status" class="status" hidden></section>
+
+  <section id="pages" class="pages"></section>
+
+  <section class="card" id="exportCard" hidden>
+    <label for="fname">③ ファイル名</label>
+    <input id="fname" type="text" class="text" value="楽譜" >
+    <button class="btn primary" id="pdfBtn">PDFを作成して保存</button>
+    <p class="hint">作成後、共有メニューから「ファイル」に保存できます。</p>
+  </section>
+</main>
+
+<footer>
+  <p>端末内で処理します（写真はどこにも送信されません）</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
