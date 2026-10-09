@@ -5,7 +5,7 @@
    方式D（検証済み）のJavaScript移植:
      1) 影ムラ補正（背景推定して割り算）
      2) 色ペン除去（彩度で判定して白化）
-     3) 濃さしきい値で印刷(濃)を残し手書き(薄)を落とす
+     3) 適応的2値化(Sauvola)で印刷を残し、紙を真っ白に（手書きは薄化）
      4) 微小ノイズ（薄い鉛筆の芯の断片）を連結成分で除去
    PDFは外部ライブラリ無しで生成（各ページをJPEGで埋め込み / DCTDecode）
    =========================================================================== */
@@ -125,18 +125,75 @@ function estimateBackground(gray, w, h, scale) {
   return bg;
 }
 
-/* --- norm + しきい値 → 2値(ink) → ノイズ除去 → 白黒Canvas --- */
-function renderPage(cache, threshold, thickness) {
+/* --- 適応的2値化（Sauvola法） ---
+   各画素を「その周囲（ローカル窓）の明るさ・ばらつき」と比べて白黒を決める。
+   固定しきい値だと影の中の音符が消え白地が灰色化するが、適応的なら
+   紙は真っ白・印刷はくっきり残り、市販スキャナアプリ相当の仕上がりになる。
+   しきい値  T = m * (1 + k * (s/R - 1))   (m=局所平均, s=局所標準偏差, R=128)
+   k を上げるほど ink と判定される画素が減る → より白く（メモが消え気味）。
+   高速化のため積分画像(summed-area table)で局所平均・分散を O(1)/画素 で計算。 */
+const SAUVOLA_R = 128;        // Sauvolaの正規化定数（8bit画像の標準値）
+function adaptiveInk(norm, w, h, k) {
+  const n = w * h;
+  // ローカル窓の半径（画像長辺に比例, 8〜40pxにクランプ）。
+  // 五線・符頭をまたぐ程度の広さで、影ムラには十分追従する。
+  let r = Math.round(Math.max(w, h) / 80);
+  if (r < 8) r = 8;
+  if (r > 40) r = 40;
+
+  // 積分画像: I=Σnorm, I2=Σnorm^2 （サイズ (w+1)x(h+1), 先頭行・列は0）
+  const sw = w + 1;
+  const I = new Float64Array(sw * (h + 1));
+  const I2 = new Float64Array(sw * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let rs = 0, rs2 = 0;
+    const up = y * sw, dn = (y + 1) * sw;
+    for (let x = 0; x < w; x++) {
+      const v = norm[y * w + x];
+      rs += v; rs2 += v * v;
+      I[dn + x + 1] = I[up + x + 1] + rs;
+      I2[dn + x + 1] = I2[up + x + 1] + rs2;
+    }
+  }
+
+  const ink = new Uint8Array(n);
+  for (let y = 0; y < h; y++) {
+    const y0 = y - r < 0 ? 0 : y - r;
+    const y1 = y + r >= h ? h - 1 : y + r;
+    const a0 = y0 * sw, a1 = (y1 + 1) * sw;
+    for (let x = 0; x < w; x++) {
+      const x0 = x - r < 0 ? 0 : x - r;
+      const x1 = x + r >= w ? w - 1 : x + r;
+      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const sum = I[a1 + x1 + 1] - I[a0 + x1 + 1] - I[a1 + x0] + I[a0 + x0];
+      const sum2 = I2[a1 + x1 + 1] - I2[a0 + x1 + 1] - I2[a1 + x0] + I2[a0 + x0];
+      const mean = sum / area;
+      let varr = sum2 / area - mean * mean;
+      if (varr < 0) varr = 0;
+      const std = Math.sqrt(varr);
+      const T = mean * (1 + k * (std / SAUVOLA_R - 1));
+      ink[y * w + x] = norm[y * w + x] < T ? 1 : 0;
+    }
+  }
+  return ink;
+}
+
+/* --- norm + 適応的2値化 → 2値(ink) → ノイズ除去 → 白黒Canvas --- */
+function renderPage(cache, k, thickness) {
   const { w, h, norm } = cache;
   const n = w * h;
 
-  // 2値: ink = norm < threshold
-  let ink = new Uint8Array(n);
-  for (let i = 0; i < n; i++) ink[i] = norm[i] < threshold ? 1 : 0;
+  // 2値: 適応的しきい値（Sauvola）でローカルに判定
+  let ink = adaptiveInk(norm, w, h, k);
 
   // 閉処理（膨張→収縮）: しきい値の境目で欠けた細い線（音符の軸・五線）を
   // つなぎ直し、かすれ・消えかかりを防ぐ。
   ink = closing3x3(ink, w, h);
+
+  // 縁の黒い塊（本の綴じ目・ページ端・隣ページの影）を除去。
+  // 画像の外周に接する「塗りつぶし状（濃い）」の成分だけを消し、
+  // 細い五線・スラー・音符（線状で密度が低い）は残す。膨張前に行う。
+  removeBorderBlobs(ink, w, h);
 
   // 線の太らせ（元写真に近い濃さにする）。thickness回だけ2x2膨張。
   for (let t = 0; t < thickness; t++) ink = dilate2x2(ink, w, h);
@@ -184,6 +241,59 @@ function removeSmallComponents(ink, w, h, minArea) {
     }
     if (count < minArea) {
       for (const p of members) ink[p] = 0;
+    }
+  }
+}
+
+/* --- 縁の黒い塊・余白のゴミを除去（綴じ目・ページ端・影の黒化、五線から離れた
+       読めないメモ対策） ---
+   連結成分(4近傍)ごとに bbox・面積・外周接触・充填率を調べ、
+   次のいずれかを満たすものを消す:
+     (a) 外周に接し、bboxが外周マージン帯(上下左右いずれか)に完全に収まる
+         → ページ端・隅の汚れ・五線から離れた余白のメモ
+     (b) 外周に接し、充填率が非常に高い(塗りつぶし状)
+         → 綴じ目・影の濃い塗りつぶし領域
+   五線・音符・タイトルは中央の内側領域にあり、(a)(b)に該当しないため保持。
+   マージン帯はタイトル(約10%)より上に収まるよう控えめ(6%)に設定。 */
+const BORDER_MARGIN_FRAC = 0.06;    // 外周マージン帯の割合（短辺基準で控えめ）
+const BORDER_SOLID_FILL = 0.50;     // これ以上の充填率は塗りつぶし状（影の塊）とみなす
+function removeBorderBlobs(ink, w, h) {
+  const n = w * h;
+  const mx = Math.round(w * BORDER_MARGIN_FRAC);
+  const my = Math.round(h * BORDER_MARGIN_FRAC);
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  const members = new Int32Array(n);
+  for (let start = 0; start < n; start++) {
+    if (ink[start] === 0 || seen[start]) continue;
+    // 1成分をBFS収集しつつ bbox・外周接触を記録
+    let sp = 0, mc = 0;
+    stack[sp++] = start; seen[start] = 1;
+    let minx = w, miny = h, maxx = -1, maxy = -1, touch = false;
+    while (sp > 0) {
+      const p = stack[--sp];
+      members[mc++] = p;
+      const x = p % w, y = (p - x) / w;
+      if (x < minx) minx = x; if (x > maxx) maxx = x;
+      if (y < miny) miny = y; if (y > maxy) maxy = y;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) touch = true;
+      if (x > 0)     { const q = p - 1; if (ink[q] && !seen[q]) { seen[q] = 1; stack[sp++] = q; } }
+      if (x < w - 1) { const q = p + 1; if (ink[q] && !seen[q]) { seen[q] = 1; stack[sp++] = q; } }
+      if (y > 0)     { const q = p - w; if (ink[q] && !seen[q]) { seen[q] = 1; stack[sp++] = q; } }
+      if (y < h - 1) { const q = p + w; if (ink[q] && !seen[q]) { seen[q] = 1; stack[sp++] = q; } }
+    }
+    // bboxが外周マージン帯に完全に収まるか（上 or 下 or 左 or 右）
+    const inMargin = (maxy < my) || (miny > h - 1 - my) ||
+                     (maxx < mx) || (minx > w - 1 - mx);
+    // 塗りつぶし状（充填率が非常に高い＝影の黒塊）
+    const bw = maxx - minx + 1, bh = maxy - miny + 1;
+    const solid = touch && (mc / (bw * bh)) >= BORDER_SOLID_FILL;
+    // (a) bboxが外周マージン帯(6%)に完全に収まる成分 → 余白のゴミ・ページ端・隅の汚れ
+    //     ※外周6%には本来コンテンツが無い。五線や音符は幅/高さ方向に伸びて
+    //       マージン外へ跨るため「完全に収まる」に該当せず保護される。
+    // (b) 縁に接する塗りつぶし状の黒塊（綴じ目・影）
+    if (inMargin || solid) {
+      for (let i = 0; i < mc; i++) ink[members[i]] = 0;
     }
   }
 }
@@ -255,11 +365,11 @@ function dilate2x2(src, w, h) {
 
 /* --- 全ページを再描画してサムネイル表示 --- */
 function refreshPages() {
-  const threshold = parseInt(thr.value, 10);
+  const k = parseInt(thr.value, 10) / 100;   // 適応的2値化の感度
   const thickness = parseInt(thick.value, 10);
   pagesEl.innerHTML = "";
   pages.forEach((cache, idx) => {
-    const cv = renderPage(cache, threshold, thickness);
+    const cv = renderPage(cache, k, thickness);
     cache._lastCanvas = cv; // PDF生成で再利用
     const item = document.createElement("div");
     item.className = "page-item";
@@ -318,12 +428,12 @@ $("pdfBtn").addEventListener("click", async () => {
   setStatus("PDF作成中…");
   await new Promise((r) => setTimeout(r, 10));
   try {
-    const threshold = parseInt(thr.value, 10);
+    const k = parseInt(thr.value, 10) / 100;
     const thickness = parseInt(thick.value, 10);
     const canUseFlate = typeof CompressionStream !== "undefined";
     const imgs = [];
     for (const c of pages) {
-      const cv = c._lastCanvas || renderPage(c, threshold, thickness);
+      const cv = c._lastCanvas || renderPage(c, k, thickness);
       const w = cv.width, h = cv.height;
       if (canUseFlate) {
         const gray = canvasToGray(cv);           // 1画素1バイト(0/255)
