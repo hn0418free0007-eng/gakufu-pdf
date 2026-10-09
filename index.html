@@ -24,10 +24,10 @@
       <label for="thr">② 消し具合の調整</label>
       <div class="slider-wrap">
         <span class="slabel">メモを残す</span>
-        <input id="thr" type="range" min="110" max="175" value="155" step="1">
+        <input id="thr" type="range" min="5" max="50" value="20" step="1">
         <span class="slabel">メモを消す</span>
       </div>
-      <div class="thr-val">しきい値: <span id="thrVal">155</span></div>
+      <div class="thr-val">感度: <span id="thrVal">20</span></div>
     </div>
     <div class="slider-row" style="margin-top:14px">
       <label for="thick">線の太さ（濃さ）</label>
@@ -40,8 +40,9 @@
     </div>
     <button class="btn" id="reprocessBtn">この設定で再処理</button>
     <p class="hint">
+      適応的処理で紙を白く・印刷をくっきりにします（市販スキャナ風）。<br>
       音符が薄い・かすれる場合は「線の太さ」を上げてください（既定3）。<br>
-      メモが残る場合はしきい値を右へ、音符が欠ける場合は左へ。
+      メモが残る場合は感度を右へ、音符が欠ける場合は左へ（既定20）。
     </p>
   </section>
 
